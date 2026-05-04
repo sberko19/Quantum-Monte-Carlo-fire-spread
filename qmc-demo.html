@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WFD-QMC · Ensemble Fire Forecast Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:     #07090c;
+    --bg-1:   #0b0f14;
+    --bg-2:   #11161d;
+    --line:   #1f2934;
+    --ink-0:  #e6ecf2;
+    --ink-1:  #aab4c0;
+    --ink-2:  #6c7787;
+    --ink-3:  #3d4754;
+    --amber:  #ffb547;
+    --ember:  #ff6b1a;
+    --signal: #5be3b1;
+    --blood:  #c4232a;
+    --crew:   #c084fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--ink-0);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    height: 100%;
+  }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr auto;
+    height: 100vh;
+  }
+
+  /* ---- Top bar ---- */
+  .topbar {
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 18px;
+  }
+  .brand {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--ink-0);
+  }
+  .brand small {
+    color: var(--ink-2);
+    font-weight: 400;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    margin-left: 8px;
+  }
+  .topbar-stat {
+    font-size: 10px;
+    color: var(--ink-2);
+    letter-spacing: 0.08em;
+  }
+  .topbar-stat span { color: var(--ink-0); font-variant-numeric: tabular-nums; }
+  .topbar-stat.ok span { color: var(--signal); }
+  .topbar-stat.warn span { color: var(--amber); }
+  .spacer { flex: 1; }
+  .run-btn {
+    background: var(--ember);
+    border: none;
+    color: #1a0d05;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .run-btn:hover { background: var(--amber); }
+  .run-btn:disabled { background: var(--ink-3); color: var(--ink-2); cursor: not-allowed; }
+
+  /* ---- Main area ---- */
+  .main {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    overflow: hidden;
+  }
+
+  /* ---- Controls sidebar ---- */
+  .sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .ctrl-group {
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .ctrl-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    gap: 8px;
+  }
+  .ctrl-row label { font-size: 10px; color: var(--ink-1); flex: 1; }
+  .ctrl-row input[type=range] {
+    flex: 2;
+    accent-color: var(--ember);
+  }
+  .ctrl-row .val {
+    font-size: 10px;
+    color: var(--amber);
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  select {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    color: var(--ink-0);
+    font-family: inherit;
+    font-size: 10px;
+    padding: 4px 6px;
+    width: 100%;
+  }
+
+  /* ---- Diagnostics ---- */
+  .diag-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    margin-top: 6px;
+  }
+  .diag-cell {
+    background: var(--bg-2);
+    padding: 7px 10px;
+  }
+  .diag-cell .k {
+    font-size: 8px;
+    color: var(--ink-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .diag-cell .v {
+    font-size: 13px;
+    color: var(--ink-0);
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+  .diag-cell .v.ok  { color: var(--signal); }
+  .diag-cell .v.warn { color: var(--amber); }
+  .diag-cell .v.fast { color: var(--signal); }
+  .diag-cell .v.slow { color: var(--blood); }
+
+  /* ---- Heatmap area ---- */
+  .heatmaps {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 24px;
+    gap: 12px;
+    background: var(--bg);
+    overflow: auto;
+  }
+  .heatmap-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .heatmap-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .heatmap-title {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--ink-2);
+    text-transform: uppercase;
+  }
+  .heatmap-sub {
+    font-size: 8px;
+    color: var(--ink-3);
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+  canvas.heatmap {
+    border: 1px solid var(--line);
+    image-rendering: pixelated;
+  }
+  canvas.heatmap.p5  { border-color: #2a6080; }
+  canvas.heatmap.p50 { border-color: #c47020; }
+  canvas.heatmap.p95 { border-color: #8b2020; }
+
+  /* ---- Legend ---- */
+  .legend {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 9px;
+    color: var(--ink-2);
+    letter-spacing: 0.1em;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend-swatch {
+    width: 10px; height: 10px;
+    border-radius: 1px;
+  }
+
+  /* ---- Footer ---- */
+  .footer {
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+    padding: 6px 18px;
+    font-size: 9px;
+    color: var(--ink-3);
+    letter-spacing: 0.08em;
+  }
+
+  /* ---- Uncertainty bar ---- */
+  .uncertainty-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .unc-label {
+    font-size: 9px;
+    color: var(--ink-2);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .unc-canvas {
+    border: 1px solid var(--line);
+    image-rendering: pixelated;
+  }
+
+  .placeholder {
+    color: var(--ink-3);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-align: center;
+    padding: 40px;
+    border: 1px dashed var(--line);
+  }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid var(--ink-3);
+    border-top-color: var(--ember);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">WFD-QMC <small>ENSEMBLE FIRE FORECAST DEMO · NECHO / DRY DOCK 2026</small></div>
+    <div class="topbar-stat" id="statTraj">Trajectories: <span>—</span></div>
+    <div class="topbar-stat" id="statMs">Compute: <span>—</span></div>
+    <div class="topbar-stat" id="statEntropy">Entropy: <span>—</span></div>
+    <div class="spacer"></div>
+    <button class="run-btn" id="runBtn">▶ RUN FORECAST</button>
+  </header>
+
+  <div class="main">
+
+    <!-- Controls -->
+    <aside class="sidebar">
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Scenario</span>
+        <div class="ctrl-row">
+          <label>Forecast dt</label>
+          <input type="range" id="dtSlider" min="5" max="60" step="5" value="30" />
+          <span class="val" id="dtVal">30 min</span>
+        </div>
+        <div class="ctrl-row">
+          <label>Trajectories</label>
+          <input type="range" id="trajSlider" min="32" max="256" step="32" value="256" />
+          <span class="val" id="trajVal">256</span>
+        </div>
+        <div class="ctrl-row">
+          <label>Wind speed</label>
+          <input type="range" id="windSlider" min="0" max="20" step="1" value="8" />
+          <span class="val" id="windVal">8 m/s</span>
+        </div>
+        <div class="ctrl-row">
+          <label>Wind dir</label>
+          <input type="range" id="windDirSlider" min="0" max="360" step="10" value="45" />
+          <span class="val" id="windDirVal">NE 45°</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Randomness Source</span>
+        <select id="rngSelect">
+          <option value="pseudoqrng" selected>pseudoqrng — Halton LDS (default)</option>
+          <option value="classical">classical — xorshift64 PRNG</option>
+        </select>
+        <div style="margin-top:8px;font-size:9px;color:var(--ink-3);line-height:1.5;letter-spacing:0.04em;">
+          pseudoqrng uses Halton low-discrepancy sequences for better tail coverage.
+          classical uses independent PRNG — faster but may miss rare spread events.
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Diagnostics</span>
+        <div class="diag-grid" id="diagGrid">
+          <div class="diag-cell"><div class="k">Trajectories</div><div class="v" id="dTraj">—</div></div>
+          <div class="diag-cell"><div class="k">Compute ms</div><div class="v" id="dMs">—</div></div>
+          <div class="diag-cell"><div class="k">QRNG Entropy</div><div class="v" id="dEntropy">—</div></div>
+          <div class="diag-cell"><div class="k">Entropy Status</div><div class="v" id="dEntropyStatus">—</div></div>
+          <div class="diag-cell"><div class="k">Source</div><div class="v" id="dSource">—</div></div>
+          <div class="diag-cell"><div class="k">Grid</div><div class="v" id="dGrid">—</div></div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Heatmaps -->
+    <div class="heatmaps" id="heatmapArea">
+      <div class="placeholder" id="placeholder">
+        Configure parameters and click RUN FORECAST to see the QMC ensemble output.
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    WFD-QMC v1.0.0 · Halton low-discrepancy QRNG · 35×25 grid · outputs: P(ignition), P(spread), E[intensity], σ, percentile cones
+  </footer>
+
+</div>
+
+<script src="wfd-fire-qmc.js"></script>
+<script>
+'use strict';
+
+// ---- Grid dimensions (matching WFD-OS shell) ----
+const W = 35, H = 25, N = W * H;
+const CELL_PX = 14;  // screen pixels per cell
+
+// ---- Synthetic scenario builder ----
+// Builds a small fire starting near the center-left, with
+// realistic fuel and moisture values so the ensemble diverges
+// in an interesting way. This mirrors the kind of initial
+// condition the WFD-OS shell would pass in.
+function buildScenario() {
+  const fireGrid    = new Uint8Array(N);
+  const fuelGrid    = new Float32Array(N);
+  const moistGrid   = new Float32Array(N);
+  const elevGrid    = new Float32Array(N);
+
+  // Simple deterministic terrain + fuel pattern
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      const i = iy * W + ix;
+      // Fuel: mostly 0.6-0.9 with a band of low-fuel (road/rock) at x=20
+      const fuelBase = 0.55 + 0.35 * Math.sin(ix * 0.3 + 1.2) * Math.cos(iy * 0.4 - 0.8);
+      fuelGrid[i] = (ix === 20 || ix === 21) ? 0.05 : Math.max(0.1, Math.min(1, fuelBase));
+      // Moisture: 0.12-0.25 (dry)
+      moistGrid[i] = 0.14 + 0.08 * Math.sin(ix * 0.7 + iy * 0.4);
+      // Elevation: gentle ridge
+      elevGrid[i] = 1340 + Math.sin((ix - iy) * 0.18) * 60 + Math.sin(ix * 1.9) * Math.cos(iy * 2.3) * 12;
+    }
+  }
+
+  // Initial fire: cluster of ~8 cells near (10, 12)
+  const fireSeeds = [[10,12],[11,12],[10,13],[11,13],[12,12],[10,11],[9,12],[11,11]];
+  for (const [fx, fy] of fireSeeds) {
+    if (fx >= 0 && fx < W && fy >= 0 && fy < H) {
+      fireGrid[fy * W + fx] = 1; // STATE_BURNING
+    }
+  }
+
+  return { fireGrid, fuelGrid, moistureGrid: moistGrid, elevationGrid: elevGrid };
+}
+
+// ---- Color mapping for heatmap cells ----
+// Returns [r, g, b] for a cell given its state and probability value.
+function cellColor(state, probIgn, intensity, mode) {
+  // mode: 'state' (binary percentile snap) or 'prob' (continuous)
+  if (mode === 'state') {
+    // state values: 0=unburned, 1=burning, 2=burned, 3=firebreak, 4=saved
+    if (state >= 0.9) return [255, Math.round(40 + 160 * intensity), 10];  // burning
+    return [20, 14, 10]; // unburned/burned
+  }
+  // probability mode: heat map from dark blue → orange → white
+  const p = Math.max(0, Math.min(1, probIgn));
+  if (p < 0.01) return [16, 22, 28];
+  if (p < 0.3)  return [Math.round(p/0.3 * 40),  Math.round(p/0.3 * 80),  Math.round(60 + p/0.3 * 120)];
+  if (p < 0.6)  return [Math.round(40 + (p-0.3)/0.3 * 215), Math.round(80 + (p-0.3)/0.3 * 50), Math.round(180 - (p-0.3)/0.3 * 170)];
+  return [255, Math.round(130 - (p-0.6)/0.4 * 100), Math.round(10 + (1-p) * 30)];
+}
+
+// ---- Render a forecast grid onto a canvas ----
+function renderGrid(canvas, data, mode) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < N; i++) {
+    const [r, g, b] = cellColor(data[i], data[i], 0.6, mode);
+    img.data[i * 4 + 0] = r;
+    img.data[i * 4 + 1] = g;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = 255;
+  }
+  // Draw to offscreen then scale up
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  offscreen.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(offscreen, 0, 0, W * CELL_PX, H * CELL_PX);
+}
+
+// ---- Render percentile snap (binary state) ----
+function renderPercentileSnap(canvas, snap, color) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < N; i++) {
+    const burning = snap[i] > 0.5;
+    img.data[i*4+0] = burning ? color[0] : 16;
+    img.data[i*4+1] = burning ? color[1] : 20;
+    img.data[i*4+2] = burning ? color[2] : 26;
+    img.data[i*4+3] = 255;
+  }
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  offscreen.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(offscreen, 0, 0, W * CELL_PX, H * CELL_PX);
+}
+
+// ---- Render uncertainty heatmap ----
+function renderUncertainty(canvas, uncertainty) {
+  const maxU = Math.max(...uncertainty);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < N; i++) {
+    const u = maxU > 0 ? uncertainty[i] / maxU : 0;
+    img.data[i*4+0] = Math.round(u * 192);
+    img.data[i*4+1] = Math.round(u * 84);
+    img.data[i*4+2] = Math.round(252 * u);
+    img.data[i*4+3] = 255;
+  }
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  offscreen.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(offscreen, 0, 0, W * CELL_PX, H * CELL_PX);
+}
+
+// ---- Overlay initial fire state on a canvas ----
+function overlayInitialFire(canvas, fireGrid) {
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = '#ffb547';
+  ctx.lineWidth = 1;
+  for (let iy = 0; iy < H; iy++) {
+    for (let ix = 0; ix < W; ix++) {
+      if (fireGrid[iy * W + ix] === 1) {
+        ctx.strokeRect(ix * CELL_PX, iy * CELL_PX, CELL_PX, CELL_PX);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function makeCanvas(cls) {
+  const c = document.createElement('canvas');
+  c.className = 'heatmap ' + cls;
+  c.width  = W * CELL_PX;
+  c.height = H * CELL_PX;
+  return c;
+}
+
+// ---- UI wiring ----
+const dtSlider      = document.getElementById('dtSlider');
+const trajSlider    = document.getElementById('trajSlider');
+const windSlider    = document.getElementById('windSlider');
+const windDirSlider = document.getElementById('windDirSlider');
+const dtVal         = document.getElementById('dtVal');
+const trajVal       = document.getElementById('trajVal');
+const windVal       = document.getElementById('windVal');
+const windDirVal    = document.getElementById('windDirVal');
+const rngSelect     = document.getElementById('rngSelect');
+const runBtn        = document.getElementById('runBtn');
+const heatmapArea   = document.getElementById('heatmapArea');
+
+function updateSliderLabels() {
+  dtVal.textContent        = dtSlider.value + ' min';
+  trajVal.textContent      = trajSlider.value;
+  windVal.textContent      = windSlider.value + ' m/s';
+  const deg = parseInt(windDirSlider.value);
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const dir = dirs[Math.round(deg / 45) % 8];
+  windDirVal.textContent   = dir + ' ' + deg + '°';
+}
+
+[dtSlider, trajSlider, windSlider, windDirSlider].forEach(s => {
+  s.addEventListener('input', updateSliderLabels);
+});
+updateSliderLabels();
+
+// ---- Run forecast ----
+runBtn.addEventListener('click', () => {
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spinner"></span>RUNNING…';
+
+  // Yield to let the DOM update before starting the compute
+  setTimeout(() => {
+    try {
+      const dt     = parseInt(dtSlider.value);
+      const nTraj  = parseInt(trajSlider.value);
+      const wSpeed = parseFloat(windSlider.value);
+      const wDeg   = parseFloat(windDirSlider.value) * Math.PI / 180;
+      const wind   = { u: Math.cos(wDeg) * wSpeed, v: Math.sin(wDeg) * wSpeed };
+      const source = rngSelect.value;
+
+      const scenario = buildScenario();
+
+      const qmc = new WFDFireQMC.Predictor({
+        gridWidth:        W,
+        gridHeight:       H,
+        cellSizeKm:       0.4,
+        numTrajectories:  nTraj,
+        randomnessSource: source,
+      });
+
+      qmc.setState({ ...scenario, wind });
+      const forecast = qmc.predict(dt);
+      const diag     = qmc.diagnostics();
+
+      // ---- Update diagnostics panel ----
+      document.getElementById('dTraj').textContent        = diag.trajectoriesRun;
+      document.getElementById('dMs').textContent          = diag.lastPredictMs.toFixed(1) + 'ms';
+      document.getElementById('dMs').className            = 'v ' + (diag.lastPredictMs < 50 ? 'fast' : 'slow');
+      document.getElementById('dEntropy').textContent     = diag.qrngEntropy.toFixed(2) + ' bits';
+      document.getElementById('dEntropyStatus').textContent = diag.entropyStatus;
+      document.getElementById('dEntropyStatus').className = 'v ' + (diag.entropyStatus === 'GOOD' ? 'ok' : 'warn');
+      document.getElementById('dSource').textContent      = diag.randomnessSource;
+      document.getElementById('dGrid').textContent        = diag.gridSize;
+
+      // Top bar stats
+      document.getElementById('statTraj').querySelector('span').textContent = diag.trajectoriesRun;
+      const msEl = document.getElementById('statMs').querySelector('span');
+      msEl.textContent = diag.lastPredictMs.toFixed(1) + 'ms';
+      document.getElementById('statMs').className = 'topbar-stat ' + (diag.lastPredictMs < 50 ? 'ok' : 'warn');
+      document.getElementById('statEntropy').querySelector('span').textContent = diag.qrngEntropy.toFixed(2) + ' bits';
+
+      // ---- Build heatmap area ----
+      heatmapArea.innerHTML = '';
+
+      // Row 1: percentile cones
+      const row1 = document.createElement('div');
+      row1.className = 'heatmap-row';
+
+      const pctConfigs = [
+        { pct: 5,  label: '5TH PERCENTILE',  sub: 'Best case — low spread',    color: [60, 180, 255],  cls: 'p5'  },
+        { pct: 50, label: '50TH PERCENTILE', sub: 'Median — expected outcome', color: [255, 150, 40],  cls: 'p50' },
+        { pct: 95, label: '95TH PERCENTILE', sub: 'Worst case — high spread',  color: [255, 60,  60],  cls: 'p95' },
+      ];
+
+      for (const cfg of pctConfigs) {
+        const wrap = document.createElement('div');
+        wrap.className = 'heatmap-wrap';
+        const title = document.createElement('div');
+        title.className = 'heatmap-title';
+        title.textContent = cfg.label;
+        const sub = document.createElement('div');
+        sub.className = 'heatmap-sub';
+        sub.textContent = cfg.sub;
+        const c = makeCanvas(cfg.cls);
+        renderPercentileSnap(c, forecast.percentile[cfg.pct], cfg.color);
+        overlayInitialFire(c, scenario.fireGrid);
+        wrap.appendChild(title);
+        wrap.appendChild(c);
+        wrap.appendChild(sub);
+        row1.appendChild(wrap);
+      }
+      heatmapArea.appendChild(row1);
+
+      // Row 2: probability of ignition + uncertainty
+      const row2 = document.createElement('div');
+      row2.className = 'heatmap-row';
+
+      // P(ignition)
+      const probWrap = document.createElement('div');
+      probWrap.className = 'heatmap-wrap';
+      const probTitle = document.createElement('div');
+      probTitle.className = 'heatmap-title';
+      probTitle.textContent = 'P(IGNITION)';
+      const probSub = document.createElement('div');
+      probSub.className = 'heatmap-sub';
+      probSub.textContent = 'Probability cell ignites within ' + dt + ' min';
+      const probCanvas = makeCanvas('');
+      renderGrid(probCanvas, forecast.probIgnition, 'prob');
+      overlayInitialFire(probCanvas, scenario.fireGrid);
+      probWrap.appendChild(probTitle);
+      probWrap.appendChild(probCanvas);
+      probWrap.appendChild(probSub);
+      row2.appendChild(probWrap);
+
+      // Uncertainty
+      const uncWrap = document.createElement('div');
+      uncWrap.className = 'heatmap-wrap';
+      const uncTitle = document.createElement('div');
+      uncTitle.className = 'heatmap-title';
+      uncTitle.textContent = 'UNCERTAINTY (σ)';
+      const uncSub = document.createElement('div');
+      uncSub.className = 'heatmap-sub';
+      uncSub.textContent = 'Std-dev of intensity across ' + diag.trajectoriesRun + ' trajectories';
+      const uncCanvas = makeCanvas('');
+      uncCanvas.style.borderColor = '#7040c0';
+      renderUncertainty(uncCanvas, forecast.uncertainty);
+      overlayInitialFire(uncCanvas, scenario.fireGrid);
+      uncWrap.appendChild(uncTitle);
+      uncWrap.appendChild(uncCanvas);
+      uncWrap.appendChild(uncSub);
+      row2.appendChild(uncWrap);
+
+      heatmapArea.appendChild(row2);
+
+      // Legend
+      const legend = document.createElement('div');
+      legend.className = 'legend';
+      legend.innerHTML = `
+        <div class="legend-item"><div class="legend-swatch" style="background:#ffb547;opacity:0.5;border:1px solid #ffb547"></div>Initial fire</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#3cb4ff"></div>5th pct (low spread)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#ff9628"></div>50th pct (median)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#ff3c3c"></div>95th pct (high spread)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:linear-gradient(90deg,#101418,#ff6b1a)"></div>P(ignition) low→high</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#7040c0"></div>Uncertainty (σ)</div>
+      `;
+      heatmapArea.appendChild(legend);
+
+    } catch (e) {
+      heatmapArea.innerHTML = `<div class="placeholder" style="color:#c4232a">ERROR: ${e.message}</div>`;
+      console.error('[qmc-demo]', e);
+    }
+
+    runBtn.disabled = false;
+    runBtn.textContent = '▶ RUN FORECAST';
+  }, 20);
+});
+</script>
+</body>
+</html>
