@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+numpy
+# Quantum solver (only needed when USE_QUANTUM = True in quantum_api.py)
+# qiskit==0.45.3
+# qiskit-algorithms==0.3.1
+# qiskit-optimization==0.6.1
+# qiskit-aer==0.13.3
